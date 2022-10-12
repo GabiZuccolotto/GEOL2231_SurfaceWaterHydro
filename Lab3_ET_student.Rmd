@@ -1,0 +1,271 @@
+---
+title: "Lab3_ET"
+author: "John Gardner"
+date: "2022-09-22"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+
+#### once you have installed these, comment them out BEFORE hitting "knit to html" to produce report
+install.packages("Rtools")
+install.packages("daymetr")
+install.packages("SPEI")
+
+library(daymetr)
+library(SPEI)
+
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Load and organize data from DAYMET
+First review the DAYMET data, https://daymet.ornl.gov/overview
+For reference on the R package and how to use it, https://cran.r-project.org/web/packages/daymetr/daymetr.pdf
+and https://cran.r-project.org/web/packages/daymetr/vignettes/daymetr-vignette.html
+For more info on SPEI, https://spei.csic.es/home.html
+
+```{r loaddata}
+### Directions: look up the latitude and longitude of Phoenix, AZ and Miami, FL. Load the DAYMET data for these two ### city coordinates from 1990-2020 using the download_daymet function (see R package links above). If you have your own data of monthly precipitation, monthly mean, min, and max temperature for another site, feel free to use that instead.  FINISH this code
+
+phx <- download_daymet(
+                lat = 33.4484,
+                lon = -112.0740,
+                start = 1990,
+                end = 2020,
+                internal = TRUE,
+                simplify = TRUE) 
+
+
+mia <- download_daymet(
+                lat = 25.7617,
+                lon = -80.1917,
+                start = 1990,
+                end = 2020,
+                internal = TRUE,
+                simplify = TRUE) 
+
+
+# Take a look at the data structure
+str(phx)
+# look at what the unique variables are. NOTE, this data is in long format. 
+unique(phx$measurement)
+
+### First for the Phoenix data, 
+#1) use the pivot_wider function to convert to wide format (HINT: using measurement and value columns), 
+#2) calculate the mean temperature using tmax and tmin, 
+#3) do date conversions (code is provided, but try to understand how code works), 
+#4) convert shortwave radiation flux to total daily radiation (HINT: Look at the DAYMET link at top of script, go to "Description tab" then "model outputs". There is conversion equation shown in the table).
+#5) if you want, rename the variables since the names from DAYMET are weird and long. (HINT: this is easiest if you rename() after pivoting to wide format)
+#FINISH this code
+
+phx_df <- phx %>% 
+  pivot_wider(names_from=measurement,values_from=value) %>%
+  rename(dayl_s = dayl..s.,  prcp_mmday = prcp..mm.day., srad_wm2 = srad..W.m.2.,  swe_kgm2 = swe..kg.m.2., tmax_c = tmax..deg.c., tmin_c = tmin..deg.c.,  vp_pa = vp..Pa.) %>%
+  mutate(tmean=(tmax_c+tmin_c)/2) %>% 
+  mutate(origin = as.Date(paste0(year, "-01-01"),tz = "UTC") -1 ,
+         date = as.Date(yday, origin = origin, tz="UTC")) %>%
+  mutate(yearmonth = as.Date(format(date, format = "%Y-%m-01"))) %>% 
+  mutate(totalrad_day=(srad_wm2*dayl_s/1000000))
+
+  
+### Repeat for the Miami data, you can copy and paste code.
+mia_df <- mia %>% 
+  pivot_wider(names_from=measurement,values_from=value) %>%
+  rename(dayl_s = dayl..s.,  prcp_mmday = prcp..mm.day., srad_wm2 = srad..W.m.2.,  swe_kgm2 = swe..kg.m.2., tmax_c = tmax..deg.c., tmin_c = tmin..deg.c.,  vp_pa = vp..Pa.) %>%
+  mutate(tmean=(tmax_c+tmin_c)/2) %>% 
+  mutate(origin = as.Date(paste0(year, "-01-01"),tz = "UTC") -1 ,
+         date = as.Date(yday, origin = origin, tz="UTC")) %>%
+  mutate(yearmonth = as.Date(format(date, format = "%Y-%m-01"))) %>% 
+  mutate(totalrad_day=(srad_wm2*dayl_s/1000000))
+
+### Our data is daily, but we only need monthly data to compute Potential Evapotranspiration (PET). For each city, compute monthly statistics by yearmonth. Make sure your final summary has columns for latitude (Hint: latitude is the same so think about how to "index" the first value in a column), monthly SUM of precipitation (mm), monthly MEAN max temperature, monthly MEAN min temperature, monthly MEAN mean temperature, monthly MEAN total daily solar radiation. FINISH this code.
+
+phx_month <- phx_df %>%
+  group_by(yearmonth) %>%
+  summarise(latitude=latitude[1],
+            prcp_sum_mon = sum(prcp_mmday),
+            tmax_mean_mon = mean(tmax_c),
+            tmin_mean_mon = mean(tmin_c),
+            tmean_mean_mon = mean(tmean),
+            totalrad_day_mean_mon = mean(totalrad_day)) %>%
+  ungroup()
+
+
+mia_month <- mia_df %>%
+  group_by(yearmonth) %>%
+  summarise(latitude=latitude[1],
+            prcp_sum_mon = sum(prcp_mmday),
+            tmax_mean_mon = mean(tmax_c),
+            tmin_mean_mon = mean(tmin_c),
+            tmean_mean_mon = mean(tmean),
+            totalrad_day_mean_mon = mean(totalrad_day)) %>%
+  ungroup()
+
+
+###FINISH code: save the monthly data and the daily dataframes you made for each city so you do not have to download them again. Once you have succesfully saved the files, comment out this code
+  
+write_csv(mia_month, file ="C:/Users/zucco/Desktop/Academics/Pitt/GEOL_SurfaceWaterHydrology/Lab/Lab3/mia_month.csv")
+write_csv(phx_month, file ="C:/Users/zucco/Desktop/Academics/Pitt/GEOL_SurfaceWaterHydrology/Lab/Lab3/phx_month.csv")
+write_csv(mia_df, file ="C:/Users/zucco/Desktop/Academics/Pitt/GEOL_SurfaceWaterHydrology/Lab/Lab3/mia_df.csv")
+write_csv(phx_df, file ="C:/Users/zucco/Desktop/Academics/Pitt/GEOL_SurfaceWaterHydrology/Lab/Lab3/phx_df.csv")
+
+```
+
+## Look at the data
+Question 1: Why does Phoenix have so much more incoming solar radiation compared to Miami even though Miami is further south? What impact will this have on PET?
+
+TYPE ANSWER HERE: Miami has more cloud cover. this could reduce PET in Miami compared to clear days in Miami
+
+```{r figs1-2}
+
+### FIGURE 1: plot a timeseries of daily mean temperature as a geom_line() with both cities on the same plot using a different color distinguish the cities. FINSIH this code
+
+ggplot() +
+  geom_line(data=mia_df, aes(x=date,y=tmean), color="black")+
+  geom_line(data=phx_df, aes(x=date,y=tmean), color="red")+
+  theme_bw()
+
+### Figure 2: plot a timeseries of monthly solar radiation  as a geom_line() with both cities on the same plot using a different color distinguish the cities. FINISH this code
+
+ggplot() +
+  geom_line(data=mia_month, aes(x=yearmonth, y=totalrad_day_mean_mon), color="blue")+
+  geom_line(data=phx_month, aes(x=yearmonth, y=totalrad_day_mean_mon), color="orange") +
+  theme_bw()
+
+```
+
+## PET calculation
+QUESTION 2: Since we are not using external (top of atmosphere) solar radiation to drive PET in Thornthwaite and Hargreaves calculations here, how do these methods figure out external radiation? (Hint: look at the full equations used)
+
+TYPE ANSWER HERE: using latitude and geometry between sun and earth to get estimates of potential solar radiation
+
+```{r PET, echo=FALSE}
+
+# Since we are not writing the equations from scratch,  take a look at whats under the hood in the PET equation and how it was converted into code. Note most of the code is just error checks to make sure inputs are correct, only a few lines are the actual equation.
+
+# Go to https://github.com/sbegueria/SPEI/blob/master/R/thornthwaite.R
+# and https://github.com/sbegueria/SPEI/blob/master/R/hargreaves.R
+
+### For both cities, calculate PET using three approaches: Thornthwaite, Hargreaves, and Hargreaves with precipitation data. You have to create a different object for each computation since the output is stored as a specific data type to this package called a "time-series object" and will appear in the Environment under "values" rather than in "data". Refer to to the R package info at top of script for what arguments to use. (HINT: you only need tmean at lat for Thorn, and tmax, tmin, and lat for Hargreaves. And precipitation for an added step with Hargreaves approach)
+
+mia_PET <- thornthwaite()
+
+mia_PET2 <- hargreaves()
+
+mia_PET3 <- hargreaves()
+
+### cbind() the three different PET approaches together with the original monthly data. (HINT: you will first have to convert each PET object to a dataframe using as.data.frame() ).
+mia_month_df <- cbind()
+
+# 
+phx_PET <- thornthwaite()
+
+phx_PET2 <- hargreaves()
+
+phx_PET3 <- hargreaves( )
+  
+phx_month_df <- cbind()
+
+```
+
+## COMPARE PET
+QUESTION 3: Estimating from the graphs, how similar are the three PET methods for Miami? And for Phoenix? IF the PET values are more similar for one of the cities, why do you think that is?
+
+
+TYPE ANSWER HERE: Thornwaithe always has larger range, higher highs and lower lows. PET calculations are more similar for PHX. Less precip, its easier to estimate and the precip correction for Hargreaves method will not change PET that much
+
+
+```{r figs3-4}
+
+###FIGURE 3: For Miami, plot the monthly precipitation and PET from all three methods on the same plot using geom_line and different colors and or linetypes for each of the four time series. The units of precip and PET should already be in units of mm. 
+
+ggplot() +
+  geom_line() +
+  geom_line() +
+  geom_line() +
+  geom_line() +
+  theme_bw() +
+  ylab()
+
+### FIGURE 4: repeat for phoenix
+ggplot() +
+  
+
+```
+
+## Calculating drought index: SPEI
+QUESTION 4: Looking at the 2 plots for Phoenix, describe the duration and intensity of drought (SPEI). Do you think there is a trend in drought frequency, duration, or intensity? Do the two PET methods provide similar values and interpretation of SPEI?
+
+TYPE ANSWER HERE: long intense droughts. perhaps increasing frequency, but interpretation may differ depending on PET method used
+
+QUESTION 5: Now looking at the plots for Miami, it is perhaps surprising that there are droughts here. What do droughts and wet periods look like in Miami (according to plot), and how can droughts happen in Miami FL where there is so much rain?
+
+TYPE ANSWER HERE: very short droughts. they can happen cause ET is so high
+
+
+```{r spei_figs}
+
+### Using the spei() function calculate SPEI for both cities using PET data from 2 of the 3 methods:Thornthwaite and Hargreaves with precipitation correction method. Play around with different scale arguments (which are in units of months) and look at the output plots. Use a final scale of 3. SPEI requires inputs of water balance (Precipitation - PET) and scale. 
+
+# to see help on this function
+?spei()
+
+# Phoenix with 2 methods
+phx_SPEI_tho <- spei()
+phx_SPEI_har <- spei(3)
+
+# FIGURE 5-6: make plots of SPEI drought index over time for Phoenix
+plot(phx_SPEI_tho)
+plot(phx_SPEI_har)
+
+# Miami with 2 methods
+mia_SPEI_tho <- spei()
+mia_SPEI_har <- spei()
+
+# FIGURE 7-8: make plots of SPEI drought index over time for Miami
+plot()
+plot()
+
+```
+
+## BIAS check
+QUESTION 6: Inspect the plots of PET from Thornthwaite vs. Hargreaves methods. How much scatter is there in Miami compared to Phoenix? Would you recommend use of these PET calculation methods for both places?
+
+TYPE ANSWER HERE: Phoenix has more scatter in Phoenix, but both fit along the 1 to 1 line reasonably well. Maybe one of the methods is less applicable in phoenix compared to miami
+
+```{r bias}
+
+### The SPEI calculations are stored in a list with other outputs of the spei() function. We have to extract the "fitted" values from this list, which are the SPEI values calculated by fitting a probability distribution to the data.
+
+# The SPEI values can be extracted from an object like this.
+mia_SPEI_har$fitted
+
+### Make a new dataframe for each city, which has 2 columns including the SPEI index calculated from Thornthwaite (eg. mia_SPEI_tho) and Hargreaves method estimated in the previous section. (HINT: use cbind(), extract the "fitted" values, and you may have to convert the SPEI values into a dataframe. You may also find it easier to rename the column names)
+mia_spei <- cbind(PET_tho = ,
+                   PET_har = )
+
+
+phx_spei <- 
+
+# FIGURE 9: plot the Thornthwaite vs. Hargreaves SPEI values for Miami also plotting the 1 to 1 line using geom_abline()
+ggplot(mia_spei) +
+  geom_point() +
+  geom_abline()
+
+# FIGURE 10: Repeat for Phoenix
+ggplot(phx_spei) +
+  geom_point() +
+  geom_abline()
+
+```
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
