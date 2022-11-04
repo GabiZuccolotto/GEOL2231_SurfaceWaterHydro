@@ -1,0 +1,199 @@
+---
+title: "Lab4_spatial"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+date: "2022-10-10"
+---
+
+```{r setup, include=FALSE}
+############################################################################
+### GEOL 1051/2151
+### Lab 4-Spatial Data
+###
+### Complete the code chunks and answer any questions directly in this Rmarkdown file. When completed, ### Submit your lab report as a .html file by clicking "Knit to html" above.
+############################################################################
+
+#Install this packages first then load into R
+library(sf)
+library(tidyverse)
+library(mapview)
+library(viridis)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load in data
+
+```{r loadData}
+# Let's load in from file the USGS watershed boundaries at Hydrologic Unit Code (HUC) level 4
+# Remember drop the provided data in you working directory and/or change the file path to find where the data lives
+wb4 <- st_read("C:/Users/zucco/Desktop/Academics/Pitt/GEOL_SurfaceWaterHydrology/Lab/Lab 4/data/WBDHU4.shp")
+
+# load HUC8
+wb8 <- st_read("C:/Users/zucco/Desktop/Academics/Pitt/GEOL_SurfaceWaterHydrology/Lab/Lab 4/data/WBDHU8.shp")
+
+# load National Hydrography Dataset river flowlines (not I already subsetted this to just the Susquehanna Basin). We have to drop some data from this file to clean it up a bit using st_zm()
+nhd <- st_read("C:/Users/zucco/Desktop/Academics/Pitt/GEOL_SurfaceWaterHydrology/Lab/Lab 4/data/NHD_Flowline_Susq.shp") %>%
+  st_zm()
+
+# load in the locations of USGS riverflow gages
+gages <- st_read("C:/Users/zucco/Desktop/Academics/Pitt/GEOL_SurfaceWaterHydrology/Lab/Lab 4/data/gages02.shp")
+
+### Let's explore what a shapefile, or sf object in R, looks like.
+### Run each line below then inspect the output below this R chunk (or can copy and paste each line into console to print the output in the console)
+
+# Notice the data class is both a dataframe and an sf object. There is a geometry column which holds the coordinates, projection etc, and its a multipolygon
+str(wb4)  
+
+# notice you can index the geometry column and make a plot using base R or ggplot2
+plot(wb4$geometry)
+
+# notice if you do not specify the geometry, R will make plots for each attribute
+plot(wb4)
+
+# We can also use ggplot with the geom_sf()
+ggplot() +
+  geom_sf(data= wb4) +
+  theme_bw()
+
+# if we want to color the polygons or whatever spatial object type, by some attribute we can use the same ggplot styles
+ggplot() +
+  geom_sf(data= wb4, aes(fill=AreaSqKm)) +
+  theme_bw()
+
+# we can filter and manipulate sf objects in R just like any other dataframe. Each row typical represents one geometry (1 point, 1 line with 2 ends, 1 polygon) in a multipoint/line/polygon data type
+wb4 %>%
+  filter(AreaSqKm > 60000)
+
+# Check the CRS projection of each file and make sure they are all the same for future analysis
+st_crs(wb4)
+st_crs(wb8)
+st_crs(nhd)
+st_crs(gages) 
+
+# One of these does not have the same projection as all the other ones. Which file is it? 
+#THE GAGES FILE HAS A DIFFERENT COORDINATE SYSTEM 
+
+# FINISH the code below to reproject the file using the same CRS as the others with the st_transform() function.
+gages <- gages %>%
+  st_transform(crs = st_crs(wb4))
+
+```
+## Spatial intersect
+
+```{r intersect}
+
+### Extract Susquehanna Basin using filter() and make a new R object of Susquehanna subbasins. The HUC4 is "0205". FINISH this code
+sb4 <- wb4 %>%
+  filter(HUC4=="0205")
+
+# Run this line of code and look at the interactive map that pops up below, play around with changing the background map and zooming in and out. We will come back to these maps
+mapview(sb4)
+
+# If two sf objects have the projection, your can subset an object based on the geospatial boundaries of the other object simply using the logic of dataframe indexing (e.g. newdata <- points[boundaries, ] . Remember the logic here is df[rows, columns]. So sf[1:5, ] means filter to rows 1:5 but keep all columns. Similarly, with a spatial object intersect... points[boundaries, ]... we are saying filter points or rows, to those within the boundaries and keep all rows)
+
+# FINISH this code to select the HUC8 watershed boundaries that are within the Susquehanna Basin (just using the Susquehanna HUC4 basins)
+sb8 <- wb8[sb4,]
+
+# USE mapview to plot the Susquehanna HUC8 basins AND all huc4 basins. Mapview works in layers so whatever object you map first it will be plotted on top of the following layers. 
+# Change the color of one of the layers so you can see them both (HINT: using col.regions = "some color". You can directly type common colors, red, green, blue, yellow, grey, etc.). FINSIH this code
+  mapview(wb4, col.regions="red") +
+    mapview(sb8) 
+    
+```
+
+## USGS gages
+Question: How many gages are in the Susquehanna Basin?
+
+ANSWER: 335 GAGES
+```{r gages, echo=FALSE}
+
+# We want to find how many gages are in the Susquehanna Basin. But our points the represent river flow gages are from  the entire Chesapeake bay watershed. Run code to plot the interactive map
+mapview(gages)
+
+# Intersect the gages and sb4 objects to select only gages that fall within the Susquehanna river boundaries. FINSIH the code.
+gages_sb <- gages[sb4, ]
+mapview(gages_sb)
+
+# Make a static map using base R (i.e. plot() ) OR ggplot to plot the gages in the Susquehanna Basin and the HUC4 Susquehanna basin boundaries. Make the gage points black and, use a white background using theme_bw().
+ggplot() +
+  geom_sf(data=sb4)+
+  geom_sf(data=gages_sb, color="black")+
+  theme_bw()
+
+
+```
+
+## NHD streams
+
+```{r nhd}
+
+# First lets plot the river flowlines to see what they look like. 
+ggplot() +
+  geom_sf(data= nhd)
+
+# Now make the same plot, but we color code the lines bases on the column "QE_MA" which is the mean annual discharge. Hard to see though because so many small streams! Pick a color scale you like using some type of scale_color_() function and use theme_bw(). Links for color palettes in R: https://ggplot2-book.org/scale-colour.html, https://ggplot2.tidyverse.org/reference/scale_gradient.html
+# FINISH the code
+ggplot() +
+  geom_sf(data=nhd, aes(color=log10(QA_MA))) +
+  scale_color_viridis()+
+  theme_bw()
+
+# Now you make the same plot but color code the rivers by stream order ("StreamOrde"). You will first have to convert to StreamOrde to a factor using as.factor() to plot stream order as a categorical rather than continuous variable.
+# FINISH this code.
+ggplot() +
+  geom_sf(data=nhd, aes(color=as.factor(StreamOrde)))+
+  scale_color_viridis(discrete = T, direction= -1) +
+  theme_bw()
+  
+```
+
+## Drainage density 
+QUESTION: Which HUC8 has the lowest and highest drainage density, And what are the drainage densities (units are km/km2)? 
+
+ANSWER: HUC8 02050104 has the lowest drainage density and HUC8 02050103 has the highest with values of 0.5781946 km/km2 and 0.8735556 km/km2, respectively. 
+
+QUESTION: Inspect the maps of drainage densities, the stream network shapes, and underlying topography (perhaps just looking at different layers in mapview), make some observations or hypotheses about why some watersheds have higher or lower drainage densities. 
+
+ANSWER: Elongated basins (length < width) appear to have lower drainage densities than circular basins. Drainage density would also by affected by soil permeability and relief. 
+
+```{r drainage}
+
+# Somtimes we want to join attributes from one shapefile to another based on spatial location. This is a spatial join. There are many types, See the st_join function. https://r-spatial.github.io/sf/reference/st_join.html
+# The "x" object is the object we are joining to, so that is the geometry of any new object that will be created but with added attributes or columns from the "y" object. When using pipes, the first object used is assumed to be "x"
+
+# FINISH this code. Use st_join (with all default arguments, but chose a "join =" argument that makes sense to you for figuring out the total length of streams within each subbasin) to join attributes from Susq. River basin HUC8 subbasins to nhd. That way, every nhd river reach will be labeled with its subbasin so we can easily use group_by to calculate metrics over subbasins
+nhd_join <- nhd %>%
+  st_join(sb8,join=st_within)
+
+# FINISH this code. Make a plot of nhd rivers color coded by HUC8. this plot will take a while to render
+ggplot(nhd_join) +
+  geom_sf(aes(color=HUC8))
+
+# Now we are going to calculate drainage density, which is the total length of streams per unit area, typically over some watershed boundary. Below use group_by and summarise to calculate the SUM of river lengths (e.g. using "LENGTHKM" attribute from nhd_join) and carry over the Area of the HUC8 basin that you previously joined. Next, use mutate() to calculate the drainage density from length/area. Lastly, this is important for our next analysis, remove any rows (i.e. subbasins) that have less than 1000 km of total stream length using filter(). These are subbasins that cover coastal waters etc, and we cannot analyze drainage network metrics in areas that cover too much water.
+# FINISH THIS CODE
+
+dd <- nhd_join %>%
+  st_set_geometry(NULL) %>% 
+  arrange(HUC8) %>%     #lets remove the spatial geometry since we do not need this anymore 
+  group_by(HUC8) %>%
+  summarise(length = sum(LENGTHKM, na.rm=TRUE),
+              area = AreaSqKm[1]) %>%
+  mutate(density = length/area) %>%
+  filter(length>1000)
+
+# Now lets join that drainage density (dd) back to the HUC8 polygons (sb8) so we can map/visualize drainage density. Resources for joins: https://dplyr.tidyverse.org/reference/mutate-joins.html, https://statisticsglobe.com/r-dplyr-join-inner-left-right-full-semi-anti, https://tavareshugo.github.io/r-intro-tidyverse-gapminder/08-joins/index.html
+# FINISH this code. Decide whether to use inner_join() or left_join(). (Hint: by = "HUC8")
+sb8_join <- left_join(sb8,dd,by="HUC8")
+
+# Inspect the output using interactive mapview. using "density" as the variable to map in the "zcol =" argument. FINISH THIS CODE
+mapview(nhd_join)+
+  mapview(sb8_join, zcol="density")
+
+# Make some static or interactive plots with both the HUC8 basins (same map as above) on top of the stream network to visualize both in order to help you answer the question.
+
+
+
+```
