@@ -1,0 +1,222 @@
+---
+title: 'Lab 6: Extreme Distributions'
+author: "Gabriella Zuccolotto"
+date: "2022-11-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(lubridate)
+library(dataRetrieval)
+library(fitdistrplus)
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+## Part 1: Allegheny River
+
+```{r load data, include=TRUE}
+
+### Load in daily river discharge data from the internet using the dataRetrieval package with the function
+### readNWISdv. This function takes arguments of a USGS sitenumber, the parameter Code
+### (here we use "00060" which is the code for discharge) and it loads all available 
+### daily discharge values over the period of record. The column with discharge (ft3/s) data
+### will be named  X_00060_00003. These are the same sites from Lab#5, plus we added the rio grande.
+
+# Load allegheny river near Natrona PA and add columns of year and exceedence probability
+al <- readNWISdv(siteNumbers = "03049500", parameterCd = "00060") %>%
+  rename(Q = X_00060_00003) %>%
+  mutate(name = "allegh") %>%
+  mutate(year = year(Date)) %>%
+  mutate(prob = 1- percent_rank(Q))
+
+# Load data for the Rio Grande River
+rio <- readNWISdv(siteNumbers = "08330000", parameterCd = "00060") %>%
+  rename(Q = X_00060_00003) %>%
+  mutate(name = "rio grande") %>%
+  mutate(year = year(Date))  %>% 
+  filter(Q > 0) %>%
+  mutate(prob = 1- percent_rank(Q))
+
+```
+
+```{r fit dist allegheny, include=TRUE}
+### Fit the Weibull and Lognormal distributions to the Allegheny discharge data
+### using the maximum likelihood estimator method. FINISH the missing arguments
+wei_al <- fitdist(al$Q, distr="weibull", method="mle")
+lnorm_al <- fitdist(al$Q, distr ="lnorm",  method="mle")
+
+### Look at the summary stats 
+summary(lnorm_al)
+summary(wei_al)
+
+```
+```{r diagnostic plots allegheny, include=TRUE}
+
+### PLOT 1: Make diagnostic plots for the log-normal and Weibull fits to Allegheny data. 
+### There should be 4 different plots with the weibull and distribution fits shown on each plot.
+### FINISH the incomplete code
+
+plot.legend <- c("Weibull", "lognormal")
+
+denscomp(list(wei_al, lnorm_al), legendtext = plot.legend)
+cdfcomp(list(wei_al, lnorm_al), legendtext = plot.legend)
+qqcomp(list(wei_al, lnorm_al), legendtext = plot.legend)
+ppcomp(list(wei_al, lnorm_al), legendtext = plot.legend)
+```
+
+```{r goodness of fit allegheny, include=TRUE}
+
+gofstat(list(wei_al, lnorm_al), fitnames = c("weibull", "lnorm"))
+
+```
+
+#### QUESTION 1: By looking at the diagnostic plots above and the AIC/BIC, which distribution is a better fit for the Allegheny discharge data? 
+
+The lognormal distribution is a better fit for the Allegheny discharge data because it has lower AIC and BIC values. 
+
+```{r table 1, include=TRUE}
+
+### TABLE 1: Report the AIC and BIC values for the different models 
+table1 <- matrix(c(669162.6, 667550.7, 669179.3, 667567.3), ncol=2, byrow=TRUE)
+colnames(table1) <- c('weibull','lnorm')
+rownames(table1) <- c('AIC','BIC')
+table1 <- as.table(table1)
+print(table1)
+
+```
+
+```{r exceedance prob allegheny, include=TRUE}
+
+### Use qlnorm to find the discharge value associated with the 99% and 1% flow 
+### exceedance probability (HINT: probabilities in this functions are percentiles,
+### so 1- exceedance probability).
+### (HINT: use str(lnorm_al) to figure out where the "estimates" or parameters
+### are stored. You can index the parameters directly from the lnorm_al object
+### rather than typing them in manually).
+qlnorm(1-0.99, meanlog = lnorm_al$estimate[1], sdlog = lnorm_al$estimate[2])
+qlnorm(1-0.01, meanlog = lnorm_al$estimate[1], sdlog = lnorm_al$estimate[2])
+
+### Use qweibull to find the discharge value associated with the 99% and 1% flow 
+### exceedance probability (HINT: probabilities in this functions are percentiles,
+### so 1- exceedance probability)
+qweibull(1-0.99, shape = wei_al$estimate[1], scale = wei_al$estimate[2])
+qweibull(1-0.01, shape = wei_al$estimate[1], scale = wei_al$estimate[2])
+
+```
+
+```{r table 2, include=TRUE}
+
+### TABLE 2: Make a table of the discharge values associated with the 1% and 99%
+### flow exceedance probabilities estimated by the log-normal distribution, weibull distribution
+### and the empirical method (HINT: you already calculated the empirical one,
+### its in the "prob" column in the original data)
+
+table2 <- matrix(c(1394.754,123288.4,374.2648,80219.62,1610,84500), ncol=2, byrow=TRUE)
+colnames(table2) <- c('0.99','.01')
+rownames(table2) <- c('lnorm','weibull','empirical')
+table2 <- as.table(table2)
+print(table2) 
+
+```
+#### QUESTION 2: How similar are the estimated discharge of values of the three methods for extreme high flows (e.g. 1% flow exceedance)? What are some real world consequences of over or underestimating extreme floods?
+For extreme high flows in the Allegheny River, the weibull distribution (Q=80219.6200) was much more similar to the empirical value (Q=84500) than the lognormal distribution. Overestimating extreme floods could lead to unncessary panic amongst the general public and potentially unncessary spending for flood mitigation efforts. However, underestimating extreme floods can lead to a lack of preparedness (emergency alert systems, systems to block off flood prone roads like on Washington Blvd) and potential loss of life and infrastructure. 
+
+#### QUESTION 3: How similar are the estimated discharge of values of the three methods for extreme low flows (e.g. 99% flow exceedance)? 
+For extreme low flows in the Allegheny River, the lognormal distribution (Q=1394.7540) was much more similar to the empirical value (Q=1610) than the weibull distribution. 
+
+## Part 2: Rio Grande
+
+```{r fit dist rio, include=TRUE}
+
+### Fit the weibull and Lognormal distributions to the Rio Grande discharge data
+### using the maximum liklihood estimator method. 
+##  (HINT: these distribution require non-zero values, you have to remove zeros first)
+wei_rio <- fitdist(rio$Q, distr="weibull", method="mle")
+lnorm_rio <- fitdist(rio$Q, distr ="lnorm",  method="mle")
+
+summary(wei_rio)
+summary(lnorm_rio)
+
+```
+```{r diagnostic plots rio, include=TRUE}
+
+### PLOT 2: Make diagnostic plots for the log-normal and Weibull fits to Allegheny data. 
+### There should be 4 different plots with the weibull and distribution fits shown on each plot.
+### FINISH the incomplete code. An
+
+plot.legend <- c("Weibull", "lognormal")
+
+denscomp(list(wei_rio, lnorm_rio), legendtext = plot.legend)
+cdfcomp(list(wei_rio, lnorm_rio), legendtext = plot.legend)
+qqcomp(list(wei_rio, lnorm_rio), legendtext = plot.legend)
+ppcomp(list(wei_rio, lnorm_rio), legendtext = plot.legend)
+
+
+```
+```{r goodness of fit rio, include=TRUE}
+
+gofstat(list(wei_rio, lnorm_rio), fitnames = c("weibull", "lnorm"))
+
+```
+
+#### QUESTION 4: By looking at the diagnostic plots above and the AIC/BIC, which distribution is a better fit for the Rio Grande discharge data? 
+The weibull distribution is a better fit for the Allegheny discharge data because it has lower AIC and BIC values. 
+
+```{r table 3, include=TRUE}
+
+### TABLE 3: Report the AIC and BIC values for the different models
+table3 <- matrix(c(333573.9,335235.3,333589.8,335251.2), ncol=2, byrow=TRUE)
+colnames(table3) <- c('weibull','lnorm')
+rownames(table3) <- c('AIC','BIC')
+table3 <- as.table(table3)
+print(table3)
+
+```
+
+```{r exceedance prob rio, include=TRUE}
+
+### Use qlnorm to find the discharge value associated with the 99% and 1% flow 
+### exceedance probability (HINT: probabilities in this functions are percentiles,
+### so 1- exceedance probability).
+### (HINT: use str(lnorm_al) to figure out where the "estimates" or parameters
+### are stored. You can index the parameters directly from the lnorm_al object
+### rather than typing them in manually).
+
+qlnorm(1-0.99, meanlog = lnorm_rio$estimate[1], sdlog = lnorm_rio$estimate[2])
+qlnorm(1-0.01, meanlog = lnorm_rio$estimate[1], sdlog = lnorm_rio$estimate[2])
+
+### Use qweibull to find the discharge value associated with the 99% and 1% flow 
+### exceedance probability (HINT: probabilities in this functions are percentiles,
+### so 1- exceedance probability)
+
+qweibull(1-0.99, shape = wei_rio$estimate[1], scale = wei_rio$estimate[2])
+qweibull(1-0.01, shape = wei_rio$estimate[1], scale = wei_rio$estimate[2])
+
+```
+
+```{r table 4, include=TRUE}
+
+### TABLE 4: Make a table of the discharge values associated with the 1% and 99%
+### flow exceedance probabilities estimated by the log-normal distribution, weibull distribution
+### and the empirical method (HINT: you already calculated the empirical one,
+### its in the "prob" column in the original data)
+
+table4 <- matrix(c(55.41056,9232.497,15.12902,5010.211,13,6080), ncol=2, byrow=TRUE)
+colnames(table4) <- c('0.99','.01')
+rownames(table4) <- c('lnorm','weibull','empirical')
+table4 <- as.table(table4)
+print(table4)
+
+```
+
+#### QUESTION 5: How similar are the estimated discharge of values of the three methods for extreme high flows (e.g. 1% flow exceedance)? 
+For high flows in the Rio Grande, the weibull distribution (Q=5010.211) was much more similar to the empirical value (Q=6080) than the lognormal distribution. 
+
+#### QUESTION 6: How similar are the estimated discharge of values of the three methods for extreme low flows (e.g. 99% flow exceedance)? We could use the zero flow values, What are some real world consequences of over or underestimating extreme low flow?
+For low flows in the Rio Grande, the weibull distribution (Q=15.129) was more similar to the empirical value (Q=13.000) than the lognormal distribution. Overestimating extreme low flow conditions could lead to unnecessary dam releases while underestimating could lead to limited drinking water, heavier reliance on groundwater reservoirs and ecosystem degradation by not allocating enough water to meet environmental flow requirements. 
+
+
